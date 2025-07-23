@@ -1,24 +1,19 @@
 # financial_calculator/gui/acc_input_gui.py
 
-import sys
 import tkinter as tk
 from tkinter import ttk, messagebox
 import logging
 from typing import Dict, Any, List
 
-# Import BaseGUI for inheritance
 from .base_gui import BaseGUI
-
-# Import utility functions for validation and formatting
 from utils.validation import (
     validate_numeric_input, validate_positive_numeric_input,
     validate_non_negative_numeric_input, validate_percentage_input,
     validate_list_input, validate_numeric_range,
     validate_positive_integer_input, validate_non_negative_integer_input
 )
-import config # For application-wide settings like decimal places, themes, etc.
+import config
 
-# Import the necessary classes and functions from your mathematical_functions modules
 from mathematical_functions.accounting_basics import (
     PnL, BalanceSheet, CashFlowStatement, FinancialStatements,
     BaseYearData, Assumptions, generate_basic_financials
@@ -28,192 +23,131 @@ from mathematical_functions.accounting_advanced import (
 )
 from mathematical_functions.accounting_ratios import calculate_ratios_for_year, calculate_all_ratios
 
-
-# Set up logging for this module
 logger = logging.getLogger(__name__)
 if not logger.handlers:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-
 class AccountingInputGUI(BaseGUI):
-    """
-    GUI module for collecting user inputs for the financial model (P&L, BS, CFS).
-    Inherits from BaseGUI for common functionalities like scrolling and result display.
-    """
     def __init__(self, parent, controller=None, *args, **kwargs):
         super().__init__(parent, controller, *args, **kwargs)
-        self.name = "AccountingInputGUI" # Identifier for the controller
-        self.configure(style="InputGUI.TFrame") # Apply custom style defined in main
+        self.name = "AccountingInputGUI"
+        self.configure(style="InputGUI.TFrame")
 
-        self.input_sections: Dict[str, ttk.LabelFrame] = {} # To hold frames for basic/advanced sections
+        self.input_sections: Dict[str, ttk.LabelFrame] = {}
         self.advanced_mode_var = tk.BooleanVar(value=False)
-        # Use trace_add to call _toggle_input_sections_visibility whenever the variable changes
         self.advanced_mode_var.trace_add("write", self._toggle_input_sections_visibility)
 
         self._create_input_widgets(self.scrollable_frame)
-        self._toggle_input_sections_visibility() # Call initially to set correct visibility
+        self._toggle_input_sections_visibility()
 
-        # Override the calculate button command from BaseGUI
         self.calculate_button.config(text="Generate Financial Statements", command=self.calculate_financial_statements)
         logger.info("AccountingInputGUI initialized.")
 
     def _create_input_widgets(self, parent_frame):
-        """
-        Creates the specific input fields for the financial model.
-        Organizes them into sections with basic/advanced toggling.
-        """
-        # Header/Title
         title_label = ttk.Label(parent_frame, text="Financial Model Inputs (P&L, BS, CFS)",
                                  style="Title.TLabel")
         title_label.grid(row=0, column=0, columnspan=2, pady=(10, 20), sticky="ew")
 
-        # Basic/Advanced Toggle
         advanced_toggle = ttk.Checkbutton(parent_frame,
                                           text="Enable Advanced Input Mode",
                                           variable=self.advanced_mode_var,
                                           style="Toggle.TCheckbutton")
         advanced_toggle.grid(row=1, column=0, columnspan=2, pady=(0, 10), padx=10, sticky="w")
 
-        current_row = 2 # Start grid row for sections after title and toggle
+        current_row = 2
 
-        # --- Base Year Data Section (Always visible) ---
+        # Base Year Section
         base_data_frame = ttk.LabelFrame(parent_frame, text="Base Year (Year 0) Data", style="InputSection.TLabelframe")
         base_data_frame.grid(row=current_row, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
         self.input_sections['base_data'] = base_data_frame
         self._populate_base_data_inputs(base_data_frame)
         current_row += 1
 
-        # --- Core Assumptions Section (Always visible) ---
+        # Core Assumptions
         core_assumptions_frame = ttk.LabelFrame(parent_frame, text="Core Assumptions", style="InputSection.TLabelframe")
         core_assumptions_frame.grid(row=current_row, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
         self.input_sections['core_assumptions'] = core_assumptions_frame
         self._populate_core_assumptions_inputs(core_assumptions_frame)
         current_row += 1
 
-        # --- Advanced Assumptions Section (Toggleable) ---
+        # Advanced Assumptions (toggle)
         advanced_assumptions_frame = ttk.LabelFrame(parent_frame, text="Advanced Assumptions", style="InputSection.TLabelframe")
-        # Do NOT grid it here. _toggle_input_sections_visibility will grid it if advanced mode is on.
         self.input_sections['advanced_assumptions'] = advanced_assumptions_frame
         self._populate_advanced_assumptions_inputs(advanced_assumptions_frame)
-        # Store its row for later grid/grid_remove
         self.advanced_assumptions_row = current_row
         current_row += 1
 
-        # Ensure result frame and common buttons are at the bottom
-        # Place them at high row numbers to ensure they are always below input sections
         self.result_frame.grid(row=99, column=0, columnspan=2, padx=10, pady=10, sticky="ew")
         self.common_buttons_frame.grid(row=100, column=0, columnspan=2, pady=5)
         
-        # Configure columns to expand
-        parent_frame.grid_columnconfigure(0, weight=1) # Left column for labels
-        parent_frame.grid_columnconfigure(1, weight=1) # Right column for entries
-
+        parent_frame.grid_columnconfigure(0, weight=1)
+        parent_frame.grid_columnconfigure(1, weight=1)
 
     def _populate_base_data_inputs(self, parent_frame):
-        """Populates the Base Year Data section with input fields."""
         row_idx = 0
-        self.create_input_row(parent_frame, row_idx, "Revenue ($):", "1000000", "Total revenue for the most recently completed fiscal year (Year 0).", 'base_revenue')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "Cost of Goods Sold ($):", "600000", "Cost of Goods Sold for Year 0.", 'base_cogs')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "Operating Expenses ($):", "200000", "Total operating expenses (excluding COGS and Interest) for Year 0.", 'base_opex')
-        row_idx += 1
-        # --- NEW BASE YEAR INPUTS ADDED HERE ---
-        self.create_input_row(parent_frame, row_idx, "Depreciation (P&L) ($):", "50000", "Depreciation expense for Year 0 (from P&L).", 'base_depreciation')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "Interest Expense (P&L) ($):", "10000", "Interest expense for Year 0 (from P&L).", 'base_interest_expense')
-        row_idx += 1
-        # --- End of NEW P&L Base Year Inputs ---
-        self.create_input_row(parent_frame, row_idx, "Cash ($):", "50000", "Cash and Cash Equivalents at the end of Year 0.", 'base_cash')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "Accounts Receivable ($):", "80000", "Accounts Receivable at the end of Year 0.", 'base_ar')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "Inventory ($):", "70000", "Inventory at the end of Year 0.", 'base_inventory')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "Gross Property, Plant & Equipment ($):", "400000", "Gross value of Fixed Assets at the end of Year 0.", 'base_fixed_assets')
-        row_idx += 1
-        # --- NEW BALANCE SHEET BASE YEAR INPUTS ADDED HERE ---
-        self.create_input_row(parent_frame, row_idx, "Accumulated Depreciation ($):", "100000", "Total accumulated depreciation at the end of Year 0.", 'base_accumulated_depreciation')
-        row_idx += 1
-        # --- End of NEW BS Base Year Inputs ---
-        self.create_input_row(parent_frame, row_idx, "Accounts Payable ($):", "50000", "Accounts Payable at the end of Year 0.", 'base_ap')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "Long-Term Debt ($):", "200000", "Long-Term Debt at the end of Year 0.", 'base_ltd')
-        row_idx += 1
-        # --- NEW EQUITY BASE YEAR INPUTS ADDED HERE ---
-        self.create_input_row(parent_frame, row_idx, "Share Capital ($):", "300000", "Total Share Capital at the end of Year 0.", 'base_share_capital')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "Retained Earnings ($):", "700000", "Total Retained Earnings at the end of Year 0. (Note: Total Equity = Share Capital + Retained Earnings)", 'base_equity') # Changed label for clarity, now it's specifically Retained Earnings
-        row_idx += 1
-
+        fields = [
+            ("Revenue ($):", "1000000", 'base_revenue'),
+            ("Cost of Goods Sold ($):", "600000", 'base_cogs'),
+            ("Operating Expenses ($):", "200000", 'base_opex'),
+            ("Depreciation (P&L) ($):", "50000", 'base_depreciation'),
+            ("Interest Expense (P&L) ($):", "10000", 'base_interest_expense'),
+            ("Cash ($):", "50000", 'base_cash'),
+            ("Accounts Receivable ($):", "80000", 'base_ar'),
+            ("Inventory ($):", "70000", 'base_inventory'),
+            ("Gross Property, Plant & Equipment ($):", "400000", 'base_fixed_assets'),
+            ("Accumulated Depreciation ($):", "100000", 'base_accumulated_depreciation'),
+            ("Accounts Payable ($):", "50000", 'base_ap'),
+            ("Long-Term Debt ($):", "200000", 'base_ltd'),
+            ("Retained Earnings ($):", "700000", 'base_retained_earnings'),
+        ]
+        for label, default, key in fields:
+            self.create_input_row(parent_frame, row_idx, label, default, "", key)
+            row_idx += 1
 
     def _populate_core_assumptions_inputs(self, parent_frame):
-        """Populates the Core Assumptions section with input fields."""
         row_idx = 0
-        self.create_input_row(parent_frame, row_idx, "Number of Forecast Years:", "5", "Number of years to forecast the financial statements (e.g., 5).", 'num_forecast_years')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "Revenue Growth Rates (%, comma-separated):", "10,8,6,4,3", "Annual revenue growth rates for forecast years (e.g., '10, 8, 6' for 10%, 8%, 6%).", 'revenue_growth_rates_str')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "COGS as % of Revenue (%, comma-separated):", "60,58,56,55,55", "COGS as a percentage of revenue for each forecast year (e.g., '60, 58, 56').", 'cogs_as_pct_revenue_rates_str')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "Operating Expenses as % of Revenue (%, comma-separated):", "20,19,18,17,17", "Operating expenses as a percentage of revenue.", 'opex_as_pct_revenue_rates_str')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "Tax Rate (%):", "21", "The company's effective tax rate (e.g., 21 for 21%).", 'tax_rate_pct')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "Interest Rate on Debt (%):", "5.0", "Annual interest rate on long-term debt (e.g., 5.0 for 5.0%).", 'interest_rate_pct')
-        row_idx += 1
-        
+        fields = [
+            ("Number of Forecast Years:", "5", 'num_forecast_years'),
+            ("Revenue Growth Rates (%, comma-separated):", "10,8,6,4,3", 'revenue_growth_rates_str'),
+            ("COGS as % of Revenue (%, comma-separated):", "60,58,56,55,55", 'cogs_as_pct_revenue_rates_str'),
+            ("Operating Expenses as % of Revenue (%, comma-separated):", "20,19,18,17,17", 'opex_as_pct_revenue_rates_str'),
+            ("Tax Rate (%):", "21", 'tax_rate_pct'),
+            ("Interest Rate on Debt (%):", "5.0", 'interest_rate_pct'),
+        ]
+        for label, default, key in fields:
+            self.create_input_row(parent_frame, row_idx, label, default, "", key)
+            row_idx += 1
+
     def _populate_advanced_assumptions_inputs(self, parent_frame):
-        """Populates the Advanced Assumptions section with input fields."""
         row_idx = 0
-        self.create_input_row(parent_frame, row_idx, "Accounts Receivable Days:", "30", "Average number of days to collect accounts receivable.", 'ar_days')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "Inventory Days:", "45", "Average number of days inventory is held.", 'inventory_days')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "Accounts Payable Days:", "40", "Average number of days to pay accounts payable.", 'ap_days')
-        row_idx += 1
-        # Note: If CapExAsPctRevenue is a single value in AdvancedAssumptions,
-        # then the GUI input should also be a single value, not comma-separated.
-        # I'm changing this to a single input field to match the AdvancedAssumptions dataclass.
-        self.create_input_row(parent_frame, row_idx, "Capital Expenditures as % of Revenue (%):", "2.0", "Annual capital expenditures as a percentage of revenue (single value).", 'capex_as_pct_revenue_pct') # Renamed key to reflect single value
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "Depreciation Rate (% of Gross PP&E):", "10", "Annual depreciation rate as a percentage of Gross PP&E.", 'depreciation_rate_pct')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "Dividend Payout Ratio (%):", "30", "Percentage of Net Income paid out as dividends (e.g., 30 for 30%).", 'dividend_payout_ratio_pct')
-        row_idx += 1
-        # --- NEW ADVANCED INPUTS ADDED HERE ---
-        self.create_input_row(parent_frame, row_idx, "Target Minimum Cash ($):", "50000", "The minimum cash balance the company aims to maintain; debt acts as a plug.", 'target_min_cash')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "Interest Income on Cash Rate (%):", "1.0", "Rate at which excess cash earns interest (e.g., 1.0 for 1%).", 'interest_income_on_cash_rate_pct')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "New Equity Issued ($):", "0.0", "Explicit annual new equity raised.", 'new_equity_issued')
-        row_idx += 1
-        self.create_input_row(parent_frame, row_idx, "Share Buybacks ($):", "0.0", "Explicit annual share buybacks.", 'share_buybacks')
-        row_idx += 1
-        # --- End of NEW ADVANCED INPUTS ---
+        fields = [
+            ("Accounts Receivable Days:", "30", 'ar_days'),
+            ("Inventory Days:", "45", 'inventory_days'),
+            ("Accounts Payable Days:", "40", 'ap_days'),
+            ("Capital Expenditures as % of Revenue (%):", "2.0", 'capex_as_pct_revenue_pct'),
+            ("Depreciation Rate (% of Gross PP&E):", "10", 'depreciation_rate_pct'),
+            ("Dividend Payout Ratio (%):", "30", 'dividend_payout_ratio_pct'),
+            ("Target Minimum Cash ($):", "50000", 'target_min_cash'),
+            ("Interest Income on Cash Rate (%):", "1.0", 'interest_income_on_cash_rate_pct'),
+            ("New Equity Issued ($):", "0.0", 'new_equity_issued'),
+            ("Share Buybacks ($):", "0.0", 'share_buybacks'),
+        ]
+        for label, default, key in fields:
+            self.create_input_row(parent_frame, row_idx, label, default, "", key)
+            row_idx += 1
 
     def _toggle_input_sections_visibility(self, *args):
-        """
-        Toggles the visibility of advanced input sections based on the checkbox state.
-        """
         is_advanced = self.advanced_mode_var.get()
         advanced_frame = self.input_sections['advanced_assumptions']
-
         if is_advanced:
             advanced_frame.grid(row=self.advanced_assumptions_row, column=0, columnspan=2, padx=10, pady=5, sticky="ew")
-            logger.info("Advanced input mode enabled. Advanced assumptions visible.")
+            logger.info("Advanced input mode enabled.")
         else:
-            advanced_frame.grid_remove() # Hide the frame
-            logger.info("Advanced input mode disabled. Advanced assumptions hidden.")
-        
-        # Crucial for scrollbar to adapt to new content size
+            advanced_frame.grid_remove()
+            logger.info("Advanced input mode disabled.")
         self.scrollable_frame.update_idletasks()
         self.canvas.config(scrollregion=self.canvas.bbox("all"))
 
-
-    # The calculate_financial_statements method (from my previous response)
-    # should be placed here, after the _toggle_input_sections_visibility method.
-    # I'm including it again for context, but you only need to ensure it's in your file.
     def calculate_financial_statements(self):
         """
         Gathers, validates, and processes all user inputs, then calls the
@@ -290,8 +224,7 @@ class AccountingInputGUI(BaseGUI):
         _validate_and_store('base_ap', self.get_input_value('base_ap'), 'non_negative_numeric', "Base Year Accounts Payable")
         _validate_and_store('base_ltd', self.get_input_value('base_ltd'), 'non_negative_numeric', "Base Year Long-Term Debt")
         # ADDED Base Year Equity components
-        _validate_and_store('base_share_capital', self.get_input_value('base_share_capital'), 'non_negative_numeric', "Base Year Share Capital")
-        _validate_and_store('base_equity', self.get_input_value('base_equity'), 'non_negative_numeric', "Base Year Equity") # Note: This is now Retained Earnings from the GUI, but named 'base_equity' in inputs for consistency with older code if you didn't rename it.
+        _validate_and_store('base_retained_earnings', self.get_input_value('base_retained_earnings'), 'non_negative_numeric', "Base Year Equity") # Note: This is now Retained Earnings from the GUI, but named 'base_retained_earnings' in inputs for consistency with older code if you didn't rename it.
 
 
         # --- Core Assumptions Validation & Collection ---
@@ -341,14 +274,25 @@ class AccountingInputGUI(BaseGUI):
                     errors.append(f"The number of entries in '{field_name}' ({len(inputs[key])}) must match the 'Number of Forecast Years' ({num_years}).")
         
         # Check if Base Year Equity makes sense (Assets - Liabilities = Equity)
-        required_base_data_keys = ['base_cash', 'base_ar', 'base_inventory', 'base_fixed_assets', 'base_ap', 'base_ltd', 'base_equity', 'base_accumulated_depreciation', 'base_share_capital']
+        required_base_data_keys = ['base_cash', 'base_ar', 'base_inventory', 'base_fixed_assets', 'base_ap', 'base_ltd', 'base_retained_earnings', 'base_accumulated_depreciation']
         if all(k in inputs for k in required_base_data_keys):
             total_assets = inputs['base_cash'] + inputs['base_ar'] + inputs['base_inventory'] + (inputs['base_fixed_assets'] - inputs['base_accumulated_depreciation'])
             total_liabilities = inputs['base_ap'] + inputs['base_ltd']
-            calculated_equity = total_assets - total_liabilities
-            if abs(calculated_equity - inputs['base_equity']) > 0.01: # Allow for small floating point differences
-                errors.append(f"Base Year Balance Sheet Mismatch: Assets ({self.format_currency_output(total_assets, include_symbol=False)}) - Liabilities ({self.format_currency_output(total_liabilities, include_symbol=False)}) does not equal Equity ({self.format_currency_output(inputs['base_equity'], include_symbol=False)}). It should be {self.format_currency_output(calculated_equity, include_symbol=False)}.")
+            total_equity = total_assets - total_liabilities
+            retained_earnings = inputs['base_retained_earnings']
+            share_capital = total_equity - retained_earnings
 
+            # Save computed share capital
+            if share_capital < 0:
+                errors.append(
+                    f"Computed Share Capital is negative based on your inputs: "
+                    f"Total Equity ({self.format_currency_output(total_equity, include_symbol=False)}) - "
+                    f"Retained Earnings ({self.format_currency_output(retained_earnings, include_symbol=False)}) = "
+                    f"{self.format_currency_output(share_capital, include_symbol=False)}. "
+                    f"Please enter consistent values."
+                )
+            else:
+                inputs['base_share_capital'] = share_capital  # store computed value for later
 
         if errors:
             self.display_result("Please correct the following input errors:\n" + "\n".join(errors), is_error=True)
@@ -387,7 +331,7 @@ class AccountingInputGUI(BaseGUI):
                 AccountsPayable=inputs['base_ap'],
                 Debt=inputs['base_ltd'],
                 ShareCapital=inputs['base_share_capital'],
-                RetainedEarnings=inputs['base_equity'], # This is now Retained Earnings from GUI
+                RetainedEarnings=inputs['base_retained_earnings'], # This is now Retained Earnings from GUI
                 # Derived BS items
                 NetPPE=0.0, TotalAssets=0.0, TotalLiabilities=0.0, TotalEquity=0.0, TotalLiabilitiesAndEquity=0.0
             )
