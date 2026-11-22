@@ -3,5 +3,5 @@ scipy
 pytest
 numpy_financial
 pyinstaller
-panda
+pandas
 matplotlib
